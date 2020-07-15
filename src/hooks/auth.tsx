@@ -10,7 +10,6 @@ import api from '../services/api';
 
 interface AuthState {
   token: string;
-  // eslint-disable-next-line @typescript-eslint/ban-types
   user: object;
 }
 
