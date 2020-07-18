@@ -28,14 +28,18 @@ import {
 } from './styles';
 import { useAuth } from '../../hooks/auth';
 
-interface SignUpFormData {
+interface ProfileFormData {
   name: string;
   email: string;
+  // eslint-disable-next-line camelcase
+  old_password: string;
   password: string;
+  // eslint-disable-next-line camelcase
+  password_confirmation: string;
 }
 
 const Profile: React.FC = () => {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
 
   const formRef = useRef<FormHandles>(null);
   const navigation = useNavigation();
@@ -45,46 +49,82 @@ const Profile: React.FC = () => {
   const passwordInputRef = useRef<TextInput>(null);
   const confirmPasswordInputRef = useRef<TextInput>(null);
 
-  const handleSignUp = useCallback(async (data: SignUpFormData) => {
-    try {
-      formRef.current?.setErrors({});
+  const handleSignUp = useCallback(
+    async (data: ProfileFormData) => {
+      try {
+        formRef.current?.setErrors({});
 
-      const schema = Yup.object().shape({
-        name: Yup.string().required('Obrigatório'),
-        email: Yup.string()
-          .required('Obrigatório')
-          .email('Digite um e-mail válido'),
-        password: Yup.string().min(8, 'No mínimo 8 dígitos'),
-      });
+        const schema = Yup.object().shape({
+          name: Yup.string().required('Obrigatório'),
+          email: Yup.string()
+            .required('Obrigatório')
+            .email('Digite um e-mail válido'),
+          old_password: Yup.string(),
+          password: Yup.string().when('old_password', {
+            is: val => !!val.length,
+            then: Yup.string().required('Campo obrigatório'),
+            otherwise: Yup.string(),
+          }),
+          password_confirmation: Yup.string()
+            .when('old_password', {
+              is: val => !!val.length,
+              then: Yup.string().required('Campo obrigatório'),
+              otherwise: Yup.string(),
+            })
+            .oneOf([Yup.ref('password'), 'null'], 'Confirmação incorreta'),
+        });
 
-      await schema.validate(data, {
-        abortEarly: false,
-      });
+        await schema.validate(data, {
+          abortEarly: false,
+        });
 
-      await api.post('/users', data);
+        const {
+          name,
+          email,
+          // eslint-disable-next-line camelcase
+          old_password,
+          password,
+          // eslint-disable-next-line camelcase
+          password_confirmation,
+        } = data;
 
-      Alert.alert(
-        'Cadastro realizado com sucesso!',
-        'Você já pode fazer login.',
-      );
+        const formData = {
+          name,
+          email,
+          // eslint-disable-next-line camelcase
+          ...(old_password
+            ? {
+                old_password,
+                password,
+                password_confirmation,
+              }
+            : {}),
+        };
 
-      navigation.goBack();
-    } catch (err) {
-      if (err instanceof Yup.ValidationError) {
-        const errors = getValidationErrors(err);
+        const response = await api.put('/profile', formData);
 
-        formRef.current?.setErrors(errors);
+        updateUser(response.data);
 
-        return;
+        Alert.alert('Perfil atualizado com sucesso!');
+
+        navigation.goBack();
+      } catch (err) {
+        if (err instanceof Yup.ValidationError) {
+          const errors = getValidationErrors(err);
+
+          formRef.current?.setErrors(errors);
+
+          return;
+        }
+
+        Alert.alert(
+          'Erro na atualização do perfil',
+          'Ocorreu um erro ao atualizar o perfil, tente novamente',
+        );
       }
-
-      // disparar um toast
-      Alert.alert(
-        'Erro no cadastro',
-        'Ocorreu um erro ao fazer cadastro, tente novamente',
-      );
-    }
-  }, []);
+    },
+    [navigation],
+  );
 
   const handleGoBack = useCallback(() => {
     navigation.goBack();
@@ -112,7 +152,7 @@ const Profile: React.FC = () => {
 
             <Title>Meu perfil</Title>
 
-            <Form ref={formRef} onSubmit={handleSignUp}>
+            <Form initialData={user} ref={formRef} onSubmit={handleSignUp}>
               <Input
                 autoCapitalize="words"
                 name="name"
